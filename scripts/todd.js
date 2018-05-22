@@ -1,3 +1,13 @@
+// Description:
+//   Generates help commands for Hubot.
+//
+// Commands:
+//   hubot merge <pull_request> - Merge a pull request into the next branch (must use the PR number).
+//   hubot prepare next - Prepare the next branch for being released
+//
+// Configuration:
+//   GITHUB_TOKEN - The API token to use for accessing the GitHub API
+
 const octokit = require('@octokit/rest')();
 const async = require('async');
 const exec = require('child_process').exec;
