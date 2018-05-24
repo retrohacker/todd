@@ -179,11 +179,48 @@ function setup_github(robot) {
   robot.messageRoom(SLACK_CHANNEL, "Robot todd is starting up...");
   let key;
   async.waterfall([
+    // Ensure github is in known_hosts
+    function (cb) {
+      let cmd = 'mkdir -p /root/.ssh && ' +
+        'ssh-keyscan -t rsa -T 10 github.com >> ~/.ssh/known_hosts';
+      exec(cmd, function(e) {
+        if(e) {
+          let msg = `I wasn't able to add github to the known_hosts file: ${e}`;
+          robot.messageRoom(SLACK_CHANNEL, msg);
+        }
+        cb();
+      });
+    },
+    // Setup our GitHub email
+    function (cb) {
+      let cmd =
+        'git config --global user.email "wblankenship(todd)@netflix.com"';
+      exec(cmd, function(e) {
+        if(e) {
+          let msg = `I wasn't able to set user.email for git: ${e}`;
+          robot.messageRoom(SLACK_CHANNEL, msg);
+        }
+        return cb(e);
+      });
+    },
+    // Setup our GitHub username
+    function (cb) {
+      let cmd =
+        'git config --global user.name "todd-bot"';
+      exec(cmd, function(e) {
+        if(e) {
+          let msg = `I wasn't able to set user.email for git: ${e}`;
+          robot.messageRoom(SLACK_CHANNEL, msg);
+        }
+        return cb(e);
+      });
+    },
     // Generate an ssh key
     function (cb) {
       exec('ssh-keygen -b 2048 -t rsa -f ~/.ssh/id_rsa -q -N ""', function(e) {
         if(e) {
-          robot.messageRoom(SLACK_CHANNEL, "couldn't generate ssh key...");
+          let msg = `I wasn't able to generate an ssh key: ${e}`;
+          robot.messageRoom(SLACK_CHANNEL, msg);
         }
         return cb(e);
       });
@@ -209,7 +246,8 @@ function setup_github(robot) {
           try {
             err = JSON.parse(err).message;
           } catch(e) {}
-          robot.messageRoom(SLACK_CHANNEL, `couldn't add key ${err}`);
+          let msg = `I wasn't able to add the my key to github: ${err}`;
+          robot.messageRoom(SLACK_CHANNEL, msg);
         }
         return cb(e);
       });
@@ -217,8 +255,7 @@ function setup_github(robot) {
   ], function(e) {
     let msg = "I'm awake!";
     if(e) {
-      msg = "I was unable to add my ssh key to GitHub, I won't be able " +
-        "to work with any code...";
+      msg = "I won't be able to work with any code...";
     }
     robot.messageRoom(SLACK_CHANNEL, msg);
   });
