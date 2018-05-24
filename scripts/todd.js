@@ -12,9 +12,12 @@ const octokit = require('@octokit/rest')();
 const async = require('async');
 const exec = require('child_process').exec;
 const uuid = require('uuid/v4');
+const rimraf = require('rimraf');
+const fs = require('fs');
 
-const REPO_OWNER = "retrohacker";
-const REPO_NAME = "nodequark_test";
+const REPO_OWNER = process.env["GITHUB_REPO_OWNER"];
+const REPO_NAME = process.env["GITHUB_REPO"];
+const SLACK_CHANNEL = process.env["SLACK_CHANNEL"];
 const TOKEN = process.env["GITHUB_TOKEN"];
 
 octokit.authenticate({
@@ -158,18 +161,71 @@ function prepare_next(res) {
         }
         return cb(err);
       });
-    },
+    }
   ], function(e) {
     if(clone_dir) {
       // Cleanup the git clone
-      //rimraf(clone_dir, function() {});
+      rimraf(clone_dir, function() {});
     }
     if(e) { return; }
     res.send(`Todd did good! Next branch (PR #${id}) is ready to be released.`);
   });
 }
 
+// Make sure todd has an ssh key and that it is on GitHub. We can't block
+// startup to do this, but we can at least report out to slack that we are doing
+// stuff and leave it to users not to cause race conditions.
+function setup_github(robot) {
+  robot.messageRoom(SLACK_CHANNEL, "Robot todd is starting up...");
+  let key;
+  async.waterfall([
+    // Generate an ssh key
+    function (cb) {
+      exec('ssh-keygen -b 2048 -t rsa -f ~/.ssh/id_rsa -q -N ""', function(e) {
+        if(e) {
+          robot.messageRoom(SLACK_CHANNEL, "couldn't generate ssh key...");
+        }
+        return cb(e);
+      });
+    },
+    // Read key
+    function (cb) {
+      fs.readFile('/root/.ssh/id_rsa.pub', 'utf8', function(e, str) {
+        if(e) {
+          robot.messageRoom(SLACK_CHANNEL, `couldn't read key: ${e}`);
+        }
+        key = str;
+        return cb(e);
+      });
+    },
+    // Add ssh key
+    function (cb) {
+      octokit.users.createKey({
+        "title": uuid(),
+        "key": key,
+      }, function(e) {
+        if(e) {
+          let err = JSON.stringify(e);
+          try {
+            err = JSON.parse(err).message;
+          } catch(e) {}
+          robot.messageRoom(SLACK_CHANNEL, `couldn't add key ${err}`);
+        }
+        return cb(e);
+      });
+    }
+  ], function(e) {
+    let msg = "I'm awake!";
+    if(e) {
+      msg = "I was unable to add my ssh key to GitHub, I won't be able " +
+        "to work with any code...";
+    }
+    robot.messageRoom(SLACK_CHANNEL, msg);
+  });
+}
+
 module.exports = function(robot) {
+  setup_github(robot);
   robot.respond(/merge #?([0-9]*)$/i, function (res) {
     res.send(`I'm going to merge branch #${res.match[1]}! YAY I'm helping!`);
     async.waterfall([
